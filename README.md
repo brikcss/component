@@ -69,7 +69,9 @@
 		- [ ] `sass:watch` and `sass:lint` and `sass:dist` paths.
 		- [ ] If the component will have `dist` files, or if there are any tasks you want the release process to run prior to publishing, add the following NPM script to `package.json`:
 			```js
-			"prepublishOnly": "npm run prod"
+			{
+				"prepublishOnly": "npm run prod"
+			}
 			```
 	- [ ] `devDependencies`.
 - [ ] `README.md`:
