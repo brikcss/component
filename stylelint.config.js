@@ -11,5 +11,5 @@
 /* eslint-env node */
 // var isProd = process.env.NODE_ENV === 'prod' || process.env.NODE_ENV === 'production';
 module.exports = {
-	extends: ['@brikcss/stylelint-config-brikcss-sass'],
+	extends: ['@brikcss/stylelint-config-sass'],
 };

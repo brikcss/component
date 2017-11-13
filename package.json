@@ -95,7 +95,7 @@
 	},
 	"devDependencies": {
 		"@brikcss/eslint-config-brikcss": "0.1.0",
-		"@brikcss/stylelint-config-brikcss-sass": "0.0.2",
+		"@brikcss/stylelint-config-sass": "0.0.3",
 		"@commitlint/cli": "^4.2.2",
 		"@commitlint/prompt": "^4.2.2",
 		"autoprefixer": "^7.1.4",
