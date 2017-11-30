@@ -1,0 +1,7 @@
+.my-selector--one {
+	display: flex;
+
+	&__child {
+		display: flex;
+	}
+}

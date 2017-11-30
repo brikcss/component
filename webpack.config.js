@@ -7,151 +7,212 @@
  * ---------------------------------------------------------------------
  */
 
-
-/**
- * Set up dependencies.
- */
-const webpack = require('webpack');
-const path = require('path-extra');
+// -------------------
+// Set up environment.
+//
+const webpack = require("webpack");
+const path = require("path-extra");
 const UglifyJsPlugin = webpack.optimize.UglifyJsPlugin;
-const libraryName = 'component';
+const brik = require("./brikcss.config.js");
+const configs = [];
 
+// Make sure required properties exist.
+if (!brik.name) {
+	throw new Error("`brikcss.config.js` must have a `brik.name` property.");
+}
+if (!brik.bundles) {
+	throw new Error("No `bundles` exist in `brikcss.config.js`.");
+}
+if (!brik.bundles.js) {
+	throw new Error(
+		"No `js` property exists in `brikcss.config.js`, so no js bundles will be compiled."
+	); // eslint-disable-line
+}
 
-/**
- * Set up configuration export.
- * @method
- * @param   {string}  env  NODE_ENV variable.
- * @return  {object|array}  Webpack configuration(s).
- */
-module.exports = (env = {}) => {
-	let configs = [];
-
-	// env defaults to `process.env.NODE_ENV`, but can accept webpack's env argument as a backup.
-	env.NODE_ENV = process.env.NODE_ENV || env.NODE_ENV || 'dev';
-	env.isProd = env.NODE_ENV === 'production' || env.NODE_ENV === 'prod';
-	/**
-	 * Set up configurations for each flavor.
-	 */
-	// Create angular specific config.
-	let angularConfig = {
-		entry: {
-			angularjs: './src/js/angularjs/index.js'
-		}
-	};
-	// Run dev when env === 'prod' so we build dev and .min files.
-	if (env.isProd) {
-		configs.push(
-			setupConfig('vanilla', 'dev'),
-			setupConfig('angularjs', 'dev', angularConfig)
-		);
+// --------------------------------------
+// Set up configurations for each flavor.
+//
+Object.keys(brik.bundles.js).forEach(bundleName => {
+	// Don't process `globals` as a bundle.
+	if (bundleName === "globals") {
+		return;
 	}
-	configs.push(
-		setupConfig('vanilla', env),
-		setupConfig('angularjs', env, angularConfig)
+
+	// Create bundle.
+	let bundle = Object.assign(
+		{},
+		brik.bundles.js.globals,
+		brik.bundles.js[bundleName]
 	);
 
-	// Return all configs.
-	return configs;
-};
+	// Set default `output` if it doesn't exist.
+	if (bundle.output === undefined) {
+		bundle.output = {
+			path: "./dist",
+			filename: `${brik.name}-[name].js`
+		};
+	}
 
+	// If `brik.variants` exists and no `bundle.variants` are configured, run all variants.
+	if (bundle.variants === undefined && typeof brik.variants === "object") {
+		bundle.variants = Object.keys(brik.variants);
+	}
+
+	// Create config for each bundle environment.
+	if (bundle.variants) {
+		bundle.variants.forEach(variantName => {
+			// Make sure variant exists.
+			if (!brik.variants || !brik.variants[variantName]) {
+				throw new Error(
+					`\`brikcss.config.js\` does not have \`${
+						variantName
+					}\` set up as a \`variant\`.`
+				);
+			}
+			const options = brik.variants[variantName];
+			options.name = bundleName;
+			configs.push(createConfig(bundle, options));
+		});
+		// Or create a single bundle if no environments are configured.
+	} else {
+		configs.push(createConfig(bundle, { name: bundleName }));
+	}
+});
 
 /**
- * Helper function to set up multiple configuration objects.
- * @method  setupConfig
- * @param   {string}  flavor  Flavor of bundle.
- * @param   {string}  env  NODE_ENV environment variable.
- * @param   {object}  config  Configuration to merge in.
- * @return  {object}  Configuration object.
+ *  Create config object for webpack.
+ *
+ *  @param   {object}  bundle  Bundle options object.
+ *  @return  {object}  Webpack configuration object.
  */
-function setupConfig(flavor, env, config) {
-	const pkg = require('./package.json');
+function createConfig(bundle = {}, options = {}) {
+	const pkg = require("./package.json");
+
+	// Make sure bundle has an entry and output.
+	if (!bundle.entry || !bundle.output) {
+		throw new Error(
+			"The bundle object must have both an `entry` and `output` property. See https://webpack.js.org/ for documentation."
+		);
+	}
+	if (
+		typeof bundle.output === "object" &&
+		(!bundle.output.filename || !bundle.output.path)
+	) {
+		throw new Error(
+			"The `bundle.output` object must have both a `filename` and `path` property. See https://webpack.js.org/ for documentation."
+		);
+	}
+
+	// Set up default config and merge with bundle.
+	const config = Object.assign(
+		{
+			devtool:
+				options.sourcemap !== undefined
+					? options.sourcemap ? "source-map" : false
+					: options.minify ? false : "source-map",
+			resolve: {
+				alias: {
+					src: path.resolve(__dirname, "src")
+				}
+			}
+		},
+		bundle
+	);
 
 	// Set up banner.
 	let banner = [
-		pkg.name + ' v' + pkg.version,
-		'@filename <filename>',
-		'@author ' + pkg.author,
-		'@homepage ' + pkg.homepage,
-		'@license ' + pkg.license,
-		'@description ' + pkg.description,
+		pkg.name + " v" + pkg.version,
+		"@filename <filename>",
+		"@author " + pkg.author,
+		"@homepage " + pkg.homepage,
+		"@license " + pkg.license,
+		"@description " + pkg.description
 	];
 
-	// Merge config objects.
-	config = Object.assign({
-		entry: {
-			vanilla: `./src/js/vanilla/${libraryName}.js`
-		},
-		output: {
-			path: path.resolve(__dirname, 'dist/js/' + flavor),
-			filename: `${libraryName}-[name].js`, // [name] and [chunkhash] are available.
-			// publicPath: '', // url to output directory resolved relative to the HTML page.
-			library: flavor === 'vanilla' ? libraryName : undefined, // name of the exported library.
-			libraryTarget: flavor === 'vanilla' ? 'umd' : undefined, // type of exported library.
-			// sourceMapFilename: 'sourcemaps/[file].js.map', // filename template of source map location.
-		},
-		module: {
-			rules: [
-				{
-					test: /\.js$/,
-					exclude: /(node_modules)/,
-					use: [{
-						loader: 'babel-loader',
+	// Entry file(s).
+	config.entry = {};
+	config.entry[options.name] = bundle.entry;
+
+	// Output path & filename.
+	config.output = {};
+	// Convert bundle.output string to webpack object.
+	if (typeof bundle.output === "string") {
+		config.output.filename = path.basename(bundle.output);
+		config.output.path = path.resolve(path.dirname(bundle.output));
+	}
+	// Add .min file extension when appropriate.
+	if (options.minify) {
+		config.output.filename = path.fileNameWithPostfix(
+			config.output.filename,
+			".min"
+		);
+	}
+	// By default, create a Universal Module Definition (UMD) for the vanilla bundle.
+	if (bundle.output.library === undefined && options.name === "vanilla") {
+		config.output.library = brik.name;
+		config.output.libraryTarget = "umd";
+	}
+
+	// Module rules.
+	config.module = {
+		rules: [
+			{
+				test: /\.js$/,
+				exclude: /(node_modules)/,
+				use: [
+					{
+						loader: "babel-loader"
 						// options: {
 						// 	preset: ['env']
 						// }
-					// }, {
-					// 	loader: 'eslint-loader',
+						// }, {
+						// 	loader: 'eslint-loader',
 						// options: {}
-					}]
-				}
-			]
-			// script-loader?
-			// mocha-loader? (testing)
-			// coverjs-loader? (coverage)
-		},
-		plugins: [
-			// CommonsChunkPlugin
-			// BannerPlugin
-			// BabelMinifyWebpackPlugin
-			// HotModuleReplacementPlugin
-			// HtmlWebpackPlugin
-			// UglifyjsWebpackPlugin
-		],
-		resolve: {
-			alias: {
-				src: path.resolve(__dirname, 'src')
+					}
+				]
 			}
-		}
-	}, config);
+		]
+		// script-loader?
+		// mocha-loader? (testing)
+		// coverjs-loader? (coverage)
+	};
 
-	// Add environment specific configuration.
-	if (env.isProd) {
-		// Add .min to file extension for minified file.
-		config.output.filename = path.fileNameWithPostfix(config.output.filename, '.min');
-
-		// Add plugins for prod environment.
+	// Plugins.
+	config.plugins = [
+		new webpack.BannerPlugin(
+			banner
+				.join(options.minify ? " | " : "\n")
+				.replace("<filename>", config.output.filename)
+		)
+		// CommonsChunkPlugin
+		// BannerPlugin
+		// HotModuleReplacementPlugin
+		// HtmlWebpackPlugin
+		// UglifyjsWebpackPlugin
+	];
+	if (options.minify) {
 		config.plugins.push(
-			new webpack.BannerPlugin(banner.join(' | ').replace('<filename>', config.output.filename)),
-			new UglifyJsPlugin(
-				{
-					parallel: {
-						cache: true,
-						workers: 2
-					},
-					uglifyOptions: {
-						ecma: 6
-					},
-					sourceMap: true
-				}
-			),
+			// BabelMinifyWebpackPlugin
+			new UglifyJsPlugin({
+				parallel: {
+					cache: true,
+					workers: 2
+				},
+				uglifyOptions: {
+					ecma: 6
+				},
+				sourceMap: options.sourcemap
+			})
 		);
-	} else {
-		// Add source maps.
-		config.devtool = 'source-map';
-
-		// Add plugins for dev env.
-		config.plugins.push(new webpack.BannerPlugin(banner.join('\n').replace('<filename>', config.output.filename)));
 	}
 
+	// Get rid of non-webpack properties that were merged earlier from bundle.globals. Webpack
+	// throws an error for any unrecognized properties.
+	// const webpackProps = ["amd", "bail", "cache", "context", "dependencies", "devServer", "devtool", "entry", "externals", "loader", "module", "name", "node", "output", "parallelism", "performance", "plugins", "profile", "recordsInputPath", "recordsOutputPath", "recordsPath", "resolve", "resolveLoader", "stats", "target", "watch", "watchOptions"];
+	delete config.variants;
+
+	// Return the config object.
 	return config;
 }
+
+module.exports = configs.length === 1 ? configs[0] : configs;
